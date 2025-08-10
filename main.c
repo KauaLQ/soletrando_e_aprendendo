@@ -49,6 +49,10 @@ void process_received_line(char* line, char* buffer) {
         WriteString(buf, 5, 24, "parabens");
         WriteString(buf, 5, 40, "certa resposta");
         render(buf, &frame_area);
+        npWriteV();
+        beep(BUZZER_PIN_A, 120, 400);
+        sleep_ms(200);
+        beep(BUZZER_PIN_A, 120, 400);
         analisando = !analisando;
     }
     else {

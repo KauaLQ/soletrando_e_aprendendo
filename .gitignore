@@ -1,2 +1,4 @@
 build
 !.vscode/*
+python/voz.wav
+python/voz_proc.wav

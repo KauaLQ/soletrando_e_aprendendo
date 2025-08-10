@@ -346,3 +346,15 @@ void npWriteX(){
 
   npWrite();
 }
+
+void npWriteV(){
+  npClear();
+
+  npSetLED(19, 0, 80, 0);
+  npSetLED(11, 0, 80, 0);
+  npSetLED(7, 0, 80, 0);
+  npSetLED(5, 0, 80, 0);
+  npSetLED(3, 0, 80, 0);
+
+  npWrite();
+}

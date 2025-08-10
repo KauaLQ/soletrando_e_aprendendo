@@ -24,5 +24,6 @@ void npWriteLeft(void);
 void npWriteRigth(void);
 void npWriteFace(void);
 void npWriteX(void);
+void npWriteV(void);
 
 #endif
