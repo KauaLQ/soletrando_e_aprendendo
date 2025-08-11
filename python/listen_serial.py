@@ -1,4 +1,4 @@
-# python3 sistema_principal.py COM6
+# python3 listen_serial.py COM6
 
 import serial
 import random

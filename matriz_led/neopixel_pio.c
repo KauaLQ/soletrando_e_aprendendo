@@ -80,203 +80,45 @@ void npWrite() {
   sleep_us(100); // Espera 100us, sinal de RESET do datasheet.
 }
 
-void npWriteTen(){
-  npClear();
+// Mapas de LEDs para cada dígito
+static const uint8_t leds0[]  = {23, 22, 21, 18, 16, 13, 11, 8, 6, 1, 2, 3};
+static const uint8_t leds1[]  = {21, 18, 11, 8, 1};
+static const uint8_t leds2[]  = {23, 22, 21, 18, 13, 12, 11, 6, 1, 2, 3};
+static const uint8_t leds3[]  = {23, 22, 21, 18, 13, 12, 11, 8, 1, 2, 3};
+static const uint8_t leds4[]  = {23, 21, 18, 16, 13, 12, 11, 8, 1};
+static const uint8_t leds5[]  = {23, 22, 21, 16, 13, 12, 11, 8, 1, 2, 3};
+static const uint8_t leds6[]  = {23, 22, 21, 16, 13, 12, 11, 6, 8, 1, 2, 3};
+static const uint8_t leds7[]  = {23, 22, 21, 18, 11, 8, 1};
+static const uint8_t leds8[]  = {23, 22, 21, 16, 18, 13, 12, 11, 6, 8, 1, 2, 3};
+static const uint8_t leds9[]  = {23, 22, 21, 16, 18, 13, 12, 11, 8, 1, 2, 3};
+static const uint8_t leds10[] = {24, 15, 14, 5, 4, 22, 21, 20, 24, 17, 19, 12, 10, 7, 9, 0, 1, 2};
 
-  npSetLED(24, 0, 80, 0);
-  npSetLED(15, 0, 80, 0);
-  npSetLED(14, 0, 80, 0);
-  npSetLED(5, 0, 80, 0);
-  npSetLED(4, 0, 80, 0);
+// Array com os padrões (r, g, b podem ser diferentes para cada dígito)
+static const DigitPattern digits[] = {
+    {leds0,  sizeof(leds0),  80, 0, 0},  // 0 vermelho
+    {leds1,  sizeof(leds1),  80, 0, 0},  // 1 vermelho
+    {leds2,  sizeof(leds2),  80, 0, 0},  // 2 vermelho
+    {leds3,  sizeof(leds3),  80, 0, 0},  // 3 vermelho
+    {leds4,  sizeof(leds4),  80, 0, 0},  // 4 vermelho
+    {leds5,  sizeof(leds5),  80, 0, 0},  // 5 vermelho
+    {leds6,  sizeof(leds6),   0, 80, 0}, // 6 verde
+    {leds7,  sizeof(leds7),   0, 80, 0}, // 7 verde
+    {leds8,  sizeof(leds8),   0, 80, 0}, // 8 verde
+    {leds9,  sizeof(leds9),   0, 80, 0}, // 9 verde
+    {leds10, sizeof(leds10),  0, 80, 0}  // 10 verde
+};
 
-  npSetLED(22, 0, 80, 0);
-  npSetLED(21, 0, 80, 0);
-  npSetLED(20, 0, 80, 0);
-  npSetLED(24, 0, 80, 0);
-  npSetLED(17, 0, 80, 0);
-  npSetLED(19, 0, 80, 0);
-  npSetLED(12, 0, 80, 0);
-  npSetLED(10, 0, 80, 0);
-  npSetLED(7, 0, 80, 0);
-  npSetLED(9, 0, 80, 0);
-  npSetLED(0, 0, 80, 0);
-  npSetLED(1, 0, 80, 0);
-  npSetLED(2, 0, 80, 0);
+void npWriteNumber(uint8_t number) {
+    if (number > 10) return; // evita valores inválidos
 
-  npWrite();
-}
+    npClear();
+    const DigitPattern *d = &digits[number];
 
-void npWriteNine(){
-  npClear();
+    for (uint8_t i = 0; i < d->count; i++) {
+        npSetLED(d->leds[i], d->r, d->g, d->b);
+    }
 
-  npSetLED(23, 0, 80, 0);
-  npSetLED(22, 0, 80, 0);
-  npSetLED(21, 0, 80, 0);
-  npSetLED(16, 0, 80, 0);
-  npSetLED(18, 0, 80, 0);
-  npSetLED(13, 0, 80, 0);
-  npSetLED(12, 0, 80, 0);
-  npSetLED(11, 0, 80, 0);
-  npSetLED(8, 0, 80, 0);
-  npSetLED(1, 0, 80, 0);
-  npSetLED(2, 0, 80, 0);
-  npSetLED(3, 0, 80, 0);
-
-  npWrite();
-}
-
-void npWriteEigth(){
-  npClear();
-
-  npSetLED(23, 0, 80, 0);
-  npSetLED(22, 0, 80, 0);
-  npSetLED(21, 0, 80, 0);
-  npSetLED(16, 0, 80, 0);
-  npSetLED(18, 0, 80, 0);
-  npSetLED(13, 0, 80, 0);
-  npSetLED(12, 0, 80, 0);
-  npSetLED(11, 0, 80, 0);
-  npSetLED(6, 0, 80, 0);
-  npSetLED(8, 0, 80, 0);
-  npSetLED(1, 0, 80, 0);
-  npSetLED(2, 0, 80, 0);
-  npSetLED(3, 0, 80, 0);
-
-  npWrite();
-}
-
-void npWriteSeven(){
-  npClear();
-
-  npSetLED(23, 0, 80, 0);
-  npSetLED(22, 0, 80, 0);
-  npSetLED(21, 0, 80, 0);
-  npSetLED(18, 0, 80, 0);
-  npSetLED(11, 0, 80, 0);
-  npSetLED(8, 0, 80, 0);
-  npSetLED(1, 0, 80, 0);
-
-  npWrite();
-}
-
-void npWriteSix(){
-  npClear();
-
-  npSetLED(23, 0, 80, 0);
-  npSetLED(22, 0, 80, 0);
-  npSetLED(21, 0, 80, 0);
-  npSetLED(16, 0, 80, 0);
-  npSetLED(13, 0, 80, 0);
-  npSetLED(12, 0, 80, 0);
-  npSetLED(11, 0, 80, 0);
-  npSetLED(6, 0, 80, 0);
-  npSetLED(8, 0, 80, 0);
-  npSetLED(1, 0, 80, 0);
-  npSetLED(2, 0, 80, 0);
-  npSetLED(3, 0, 80, 0);
-
-  npWrite();
-}
-
-void npWriteFive(){
-  npClear();
-
-  npSetLED(23, 80, 0, 0);
-  npSetLED(22, 80, 0, 0);
-  npSetLED(21, 80, 0, 0);
-  npSetLED(16, 80, 0, 0);
-  npSetLED(13, 80, 0, 0);
-  npSetLED(12, 80, 0, 0);
-  npSetLED(11, 80, 0, 0);
-  npSetLED(8, 80, 0, 0);
-  npSetLED(1, 80, 0, 0);
-  npSetLED(2, 80, 0, 0);
-  npSetLED(3, 80, 0, 0);
-
-  npWrite();
-}
-
-void npWriteFour(){
-  npClear();
-
-  npSetLED(23, 80, 0, 0);
-  npSetLED(21, 80, 0, 0);
-  npSetLED(18, 80, 0, 0);
-  npSetLED(16, 80, 0, 0);
-  npSetLED(13, 80, 0, 0);
-  npSetLED(12, 80, 0, 0);
-  npSetLED(11, 80, 0, 0);
-  npSetLED(8, 80, 0, 0);
-  npSetLED(1, 80, 0, 0);
-
-  npWrite();
-}
-
-void npWriteThree(){
-  npClear();
-
-  npSetLED(23, 80, 0, 0);
-  npSetLED(22, 80, 0, 0);
-  npSetLED(21, 80, 0, 0);
-  npSetLED(18, 80, 0, 0);
-  npSetLED(13, 80, 0, 0);
-  npSetLED(12, 80, 0, 0);
-  npSetLED(11, 80, 0, 0);
-  npSetLED(8, 80, 0, 0);
-  npSetLED(1, 80, 0, 0);
-  npSetLED(2, 80, 0, 0);
-  npSetLED(3, 80, 0, 0);
-
-  npWrite();
-}
-
-void npWriteTwo(){
-  npClear();
-
-  npSetLED(23, 80, 0, 0);
-  npSetLED(22, 80, 0, 0);
-  npSetLED(21, 80, 0, 0);
-  npSetLED(18, 80, 0, 0);
-  npSetLED(13, 80, 0, 0);
-  npSetLED(12, 80, 0, 0);
-  npSetLED(11, 80, 0, 0);
-  npSetLED(6, 80, 0, 0);
-  npSetLED(1, 80, 0, 0);
-  npSetLED(2, 80, 0, 0);
-  npSetLED(3, 80, 0, 0);
-
-  npWrite();
-}
-
-void npWriteOne(){
-  npClear();
-
-  npSetLED(21, 80, 0, 0);
-  npSetLED(18, 80, 0, 0);
-  npSetLED(11, 80, 0, 0);
-  npSetLED(8, 80, 0, 0);
-  npSetLED(1, 80, 0, 0);
-
-  npWrite();
-}
-
-void npWriteZero(){
-  npClear();
-
-  npSetLED(23, 80, 0, 0);
-  npSetLED(22, 80, 0, 0);
-  npSetLED(21, 80, 0, 0);
-  npSetLED(18, 80, 0, 0);
-  npSetLED(16, 80, 0, 0);
-  npSetLED(13, 80, 0, 0);
-  npSetLED(11, 80, 0, 0);
-  npSetLED(8, 80, 0, 0);
-  npSetLED(6, 80, 0, 0);
-  npSetLED(1, 80, 0, 0);
-  npSetLED(2, 80, 0, 0);
-  npSetLED(3, 80, 0, 0);
-
-  npWrite();
+    npWrite();
 }
 
 void npWriteLeft(){

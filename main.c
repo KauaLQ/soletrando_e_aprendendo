@@ -33,6 +33,11 @@ uint8_t buf[SSD1306_BUF_LEN];
 volatile bool capturando = false;
 volatile bool analisando = false;
 
+// Variáveis globais de nível
+int nivel = 1;
+const int tempo_por_nivel[] = {10, 5, 3}; // segs de contagem para cada nível
+const int max_nivel = 3; // limite máximo de níveis
+
 bool audio_sample_callback(repeating_timer_t *t) {
     if (!capturando) return true;
 
@@ -40,6 +45,17 @@ bool audio_sample_callback(repeating_timer_t *t) {
     uint8_t sample = raw >> 4; // 12 bits → 8 bits
     putchar_raw(sample);
     return true;
+}
+
+// Função para resetar jogo
+void reset_jogo() {
+    nivel = 1;
+    memset(buf, 0, SSD1306_BUF_LEN);
+    WriteString(buf, 20, 24, "GAME OVER");
+    render(buf, &frame_area);
+    npWriteX();
+    beep(BUZZER_PIN_A, 200, 1000);
+    sleep_ms(2000);
 }
 
 void process_received_line(char* line, char* buffer) {
@@ -122,7 +138,7 @@ int main()
 
     while (true) {
         if (esperando && !gpio_get(BUTTON_PIN_B)) {
-            printf("pedir_palavra\n");
+            printf("pedir_palavra %d\n", nivel);
             esperando = false;  // evita múltiplos envios com botão pressionado
         }
 
@@ -135,38 +151,15 @@ int main()
                 WriteString(buf, 0, 32, buffer);
                 render(buf, &frame_area);
                 idx = 0;
-                npWriteTen();
-                beep(BUZZER_PIN_A, 130, 500);
-                sleep_ms(500);
-                npWriteNine();
-                beep(BUZZER_PIN_A, 130, 500);
-                sleep_ms(500);
-                npWriteEigth();
-                beep(BUZZER_PIN_A, 130, 500);
-                sleep_ms(500);
-                npWriteSeven();
-                beep(BUZZER_PIN_A, 130, 500);
-                sleep_ms(500);
-                npWriteSix();
-                beep(BUZZER_PIN_A, 130, 500);
-                sleep_ms(500);
-                npWriteFive();
-                beep(BUZZER_PIN_A, 110, 500);
-                sleep_ms(500);
-                npWriteFour();
-                beep(BUZZER_PIN_A, 110, 500);
-                sleep_ms(500);
-                npWriteThree();
-                beep(BUZZER_PIN_A, 110, 500);
-                sleep_ms(500);
-                npWriteTwo();
-                beep(BUZZER_PIN_A, 110, 500);
-                sleep_ms(500);
-                npWriteOne();
-                beep(BUZZER_PIN_A, 110, 500);
-                sleep_ms(500);
-                npWriteZero();
-                beep(BUZZER_PIN_A, 100, 1000);
+
+                int tempo = tempo_por_nivel[nivel-1] + 1;
+
+                //desnhando na matriz de led
+                for (uint8_t i = tempo; i > 0; i--) {
+                    npWriteNumber(i-1);
+                    beep(BUZZER_PIN_A, (i-1 > 5 ? 130 : (i-1 > 0 ? 110 : 100)), (i-1 > 0 ? 500 : 1000));
+                    sleep_ms(i-1 > 0 ? 500 : 0);
+                }
 
                 memset(buf, 0, SSD1306_BUF_LEN);
                 WriteString(buf, 5, 8, "pressione A");
