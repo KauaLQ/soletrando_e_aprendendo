@@ -53,41 +53,56 @@ void reset_jogo() {
     memset(buf, 0, SSD1306_BUF_LEN);
     WriteString(buf, 20, 24, "GAME OVER");
     render(buf, &frame_area);
-    npWriteX();
-    beep(BUZZER_PIN_A, 200, 1000);
-    sleep_ms(2000);
 }
 
 void process_received_line(char* line, char* buffer) {
-    // Aqui você pode comparar "line" e executar comandos:
     if (strstr(line, buffer) != NULL) {
         memset(buf, 0, SSD1306_BUF_LEN);
-        WriteString(buf, 5, 24, "parabens");
-        WriteString(buf, 5, 40, "certa resposta");
+        WriteString(buf, 5, 8, "Parabens!");
+        WriteString(buf, 5, 24, "Certa resposta");
         render(buf, &frame_area);
         npWriteV();
         beep(BUZZER_PIN_A, 120, 400);
         sleep_ms(200);
         beep(BUZZER_PIN_A, 120, 400);
-        analisando = !analisando;
-    }
-    else {
+
+        if (nivel <= max_nivel) {
+            nivel++;
+            if (nivel == 2) {
+                WriteString(buf, 5, 40, "prroximo nivel=");
+                WriteString(buf, 5, 56, "Nivel 2, 5 segs");
+                render(buf, &frame_area);
+            } else if (nivel == 3) {
+                WriteString(buf, 5, 40, "prroximo nivel=");
+                WriteString(buf, 5, 56, "Nivel 3, 3 segs");
+                render(buf, &frame_area);
+            } else {
+                nivel = 1;
+                WriteString(buf, 5, 40, "Jogo completo!");
+                WriteString(buf, 5, 56, "Pressione B");
+                render(buf, &frame_area);
+            }
+        }
+        analisando = false; // sai do loop e vai pro próximo
+    } else {
         memset(buf, 0, SSD1306_BUF_LEN);
-        WriteString(buf, 5, 8, "a resposta foi:");
+        WriteString(buf, 5, 8, "a resposta foi=");
         WriteString(buf, 5, 24, line);
-        WriteString(buf, 5, 40, "a palavra era:");
+        WriteString(buf, 5, 40, "a palavra era=");
         WriteString(buf, 5, 56, buffer);
         render(buf, &frame_area);
         npWriteX();
         beep(BUZZER_PIN_A, 100, 1000);
-        analisando = !analisando;
+        sleep_ms(5000);
+        reset_jogo();
+        analisando = false; // volta para pedir palavra de novo
     }
 }
 
 int main()
 {
     stdio_init_all();
-    sleep_ms(2000);
+    sleep_ms(5000);
 
     // ADC - Microfone
     adc_init();

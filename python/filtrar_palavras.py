@@ -2,7 +2,7 @@
 arquivo = "dataset/palavras.txt"
 
 # Tamanho desejado
-tamanho_desejado = 5
+tamanho_desejado = 7
 
 # Lê o arquivo e filtra
 with open(arquivo, "r", encoding="utf-8") as f:
