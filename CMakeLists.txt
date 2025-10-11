@@ -37,6 +37,8 @@ pico_sdk_init()
 
 add_executable(soletrando_e_aprendendo
         main.c
+        network/http_client
+        network/wifi_manager
         display/ssd1306_i2c
         matriz_led/neopixel_pio
         buzzer/buzzer_pwm
@@ -63,6 +65,8 @@ target_link_libraries(soletrando_e_aprendendo
         hardware_pwm
         hardware_pio
         hardware_clocks
+        hardware_watchdog
+        pico_cyw43_arch_lwip_threadsafe_background
         pico_stdio_usb)
 
 # Add the standard include files to the build
@@ -71,9 +75,9 @@ target_include_directories(soletrando_e_aprendendo PRIVATE
 )
 
 # Add any user requested libraries
-target_link_libraries(soletrando_e_aprendendo 
-        pico_cyw43_arch_none
-        )
+# target_link_libraries(soletrando_e_aprendendo 
+#         pico_cyw43_arch_none
+#         )
 
 pico_add_extra_outputs(soletrando_e_aprendendo)
 

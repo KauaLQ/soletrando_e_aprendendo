@@ -1,4 +1,4 @@
-# python3 listen_serial.py COM7
+# python3 listen_serial.py COM3
 
 import serial
 import random
@@ -13,7 +13,7 @@ import speech_recognition as sr
 from pydub import AudioSegment, effects, silence
 
 # Configurações
-porta_serial = sys.argv[1] if len(sys.argv) > 1 else 'COM7'
+porta_serial = sys.argv[1] if len(sys.argv) > 1 else 'COM3'
 baudrate = 115200
 SAMPLE_RATE = 8000
 SAMPLE_WIDTH = 2
@@ -139,6 +139,7 @@ def carregar_palavras(nivel):
         print(f"[WARN] {caminho} não encontrado. Utilizando palavras_5.txt")
         caminho = os.path.join(base_dir, "..", "dataset", "palavras_5.txt")
     with open(caminho, "r", encoding="utf-8") as f:
+        print(f"[INFO] Carregando palavras do nível {nivel}, quantidade de {letras} ({caminho})")
         return [linha.strip() for linha in f if linha.strip()]
 
 # ---------- Gravação via serial -> .wav ----------
