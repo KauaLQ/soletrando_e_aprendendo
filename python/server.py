@@ -212,6 +212,45 @@ def resultado():
         return ('', 204)
     return Response(s['result'], status=200, mimetype="text/plain")
 
+@app.route("/upload_audio_raw", methods=["POST"])
+def upload_audio_raw():
+    try:
+        nivel = int(request.args.get("nivel", request.form.get("nivel", 1)))
+    except:
+        nivel = 1
+
+    data = request.get_data()
+    if not data:
+        return jsonify({"ok": False, "error": "no data"}), 400
+
+    # salva como WAV
+    filename = f"voz_n{nivel}_{int(time.time())}_raw.wav"
+    path = UPLOAD_DIR / filename
+    with open(path, "wb") as f:
+        f.write(data)
+    app.logger.info(f"Arquivo raw salvo: {path}")
+
+    # processa e transcreve como antes
+    recognized_norm = transcrever_fala(str(path))
+    app.logger.info(f"Transcrito (raw): {recognized_norm}")
+
+    if nivel in sessions and sessions[nivel].get('expected'):
+        expected = sessions[nivel]['expected']
+        if recognized_norm in ("incompreensivel", "erro", ""):
+            to_send = recognized_norm
+        else:
+            lev = levenshtein(recognized_norm, expected)
+            if recognized_norm == expected or lev <= 1:
+                to_send = expected
+            else:
+                to_send = recognized_norm
+        sessions[nivel]['result'] = to_send
+        sessions[nivel]['updated_at'] = time.time()
+    else:
+        to_send = recognized_norm
+
+    return jsonify({"ok": True, "result": to_send})
+
 # simples UI para testes manuais
 INDEX_HTML = """
 <!doctype html>

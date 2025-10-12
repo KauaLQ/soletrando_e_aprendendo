@@ -33,19 +33,69 @@ static void http_client_close(HTTP_REQUEST_STATE *state) {
         tcp_close(state->pcb);
         state->pcb = NULL;
     }
+
     if (state->request) {
         free(state->request);
         state->request = NULL;
     }
+
     if (state->host) {
         free(state->host);
         state->host = NULL;
     }
+
     if (state->resp_buf) {
         free(state->resp_buf);
         state->resp_buf = NULL;
     }
+
+    /* liberar o body do POST (binário) se alocado */
+    if (state->body) {
+        free(state->body);
+        state->body = NULL;
+        state->body_len = 0;
+        state->body_sent = 0;
+    }
+
+    /* liberar content_type se foi strdup'ed */
+    if (state->content_type) {
+        free(state->content_type);
+        state->content_type = NULL;
+    }
+
     free(state);
+}
+
+// tenta enviar bytes do body enquanto houver espaço no send buffer.
+// retorna ERR_OK em condições normais, ou outro err_t em erro fatal.
+static err_t try_send_body(struct tcp_pcb *tpcb, HTTP_REQUEST_STATE *state) {
+    if (!state || !tpcb || !state->body || state->body_sent >= state->body_len) return ERR_OK;
+
+    while (state->body_sent < state->body_len) {
+        u16_t avail = tcp_sndbuf(tpcb);                // espaço disponível no sndbuf
+        if (avail == 0) break;                         // nada a enviar agora
+        // limita por mtu razoável e por sndbuf
+        size_t remaining = state->body_len - state->body_sent;
+        size_t to_send = remaining;
+        if (to_send > avail) to_send = avail;
+        if (to_send > 1460) to_send = 1460; // enviar em MSS-ish chunks
+
+        cyw43_arch_lwip_begin();
+        err_t err = tcp_write(tpcb, state->body + state->body_sent, (u16_t)to_send, TCP_WRITE_FLAG_COPY);
+        cyw43_arch_lwip_end();
+
+        if (err == ERR_OK) {
+            state->body_sent += to_send;
+            // continue loop e tente enviar mais (até esgotar sndbuf)
+        } else if (err == ERR_MEM) {
+            // send buffer não comportou esse bloco agora -> saia e aguarde tcp_sent
+            break;
+        } else {
+            // erro fatal
+            return err;
+        }
+    }
+    return ERR_OK;
 }
 
 // Callback: Dados recebidos do servidor
@@ -205,10 +255,25 @@ static err_t http_client_connected_cb(void *arg, struct tcp_pcb *tpcb, err_t err
     cyw43_arch_lwip_end();
 
     if (err != ERR_OK) {
-        printf("Falha ao escrever dados: %d\n", err);
+        printf("Falha ao escrever dados (headers): %d\n", err);
         http_client_close(state);
+        return err;
     }
-    return err;
+
+    // já enviou state->request (headers)
+    // agora tente enviar o body em blocos (se houver)
+    if (state->body && state->body_len > 0) {
+        err_t err2 = try_send_body(tpcb, state);
+        if (err2 != ERR_OK) {
+            printf("Falha ao enviar body inicial: %d\n", err2);
+            http_client_close(state);
+            return err2;
+        }
+        // se todo body foi enviado aqui mesmo, ótimo — o recv_cb tratará resposta.
+        // se não, o restante será enviado no callback http_client_sent_cb.
+    }
+
+    return ERR_OK;
 }
 
 // Callback: Erro na conexão
@@ -220,6 +285,18 @@ static void http_client_err_cb(void *arg, err_t err) {
 
 // Callback: Dados enviados com sucesso
 static err_t http_client_sent_cb(void *arg, struct tcp_pcb *tpcb, u16_t len) {
+    HTTP_REQUEST_STATE *state = (HTTP_REQUEST_STATE *)arg;
+    if (!state) return ERR_OK;
+
+    // se há body pendente, tente enviar o que restou
+    if (state->body && state->body_sent < state->body_len) {
+        err_t r = try_send_body(tpcb, state);
+        if (r != ERR_OK) {
+            printf("Erro em try_send_body no tcp_sent: %d\n", r);
+            http_client_close(state);
+            return r;
+        }
+    }
     return ERR_OK;
 }
 
@@ -292,6 +369,64 @@ static err_t start_http_request(const char *host, const char *path, uint16_t por
     }
 
     return ERR_OK;
+}
+
+// --- função auxiliar para enviar requisição com body binário ---
+static err_t start_http_request_binary(const char *host, const char *path, uint16_t port, const uint8_t *body, size_t body_len, const char *method, const char *content_type) {
+    HTTP_REQUEST_STATE *state = calloc(1, sizeof(HTTP_REQUEST_STATE));
+    if (!state) return ERR_MEM;
+
+    // header template com Content-Type e Content-Length
+    const char *request_template = "%s %s HTTP/1.1\r\nHost: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n";
+    int header_len = snprintf(NULL, 0, request_template, method, path, host, content_type ? content_type : "application/octet-stream", (int)body_len);
+    state->request = malloc(header_len + 1);
+    if (!state->request) {
+        free(state);
+        return ERR_MEM;
+    }
+    sprintf(state->request, request_template, method, path, host, content_type ? content_type : "application/octet-stream", (int)body_len);
+
+    // copia host
+    state->host = strdup(host);
+    state->port = port;
+
+    // copia body para o state (persistente até fechar)
+    if (body && body_len > 0) {
+        state->body = malloc(body_len);
+        if (!state->body) {
+            free(state->request);
+            free(state->host);
+            free(state);
+            return ERR_MEM;
+        }
+        memcpy(state->body, body, body_len);
+        state->body_len = body_len;
+    } else {
+        state->body = NULL;
+        state->body_len = 0;
+    }
+
+    // copia content_type
+    if (content_type) state->content_type = strdup(content_type);
+
+    // inicia DNS/connect
+    cyw43_arch_lwip_begin();
+    err_t err = dns_gethostbyname(host, &state->remote_addr, http_dns_found_cb, state);
+    cyw43_arch_lwip_end();
+
+    if (err == ERR_OK) {
+        http_dns_found_cb(host, &state->remote_addr, state);
+    } else if (err != ERR_INPROGRESS) {
+        http_client_close(state);
+        return err;
+    }
+
+    return ERR_OK;
+}
+
+// wrapper público
+err_t http_post_binary(const char *host, const char *path, uint16_t port, const uint8_t *data, size_t data_len, const char *content_type) {
+    return start_http_request_binary(host, path, port, data, data_len, "POST", content_type);
 }
 
 // Implementação das funções públicas

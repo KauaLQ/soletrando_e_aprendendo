@@ -24,6 +24,12 @@ typedef struct HTTP_REQUEST_STATE_T {
     size_t resp_received;     // bytes do body já recebidos
     int content_length;       // -1 se desconhecido
     int headers_parsed;       // 0 = não, 1 = sim
+
+    /* novo: corpo do POST (binário) */
+    uint8_t *body;    // cópia do body a ser enviada (binário)
+    size_t body_len;
+    size_t body_sent;    // quantos bytes do body já foram enviados
+    char *content_type; // string do tipo de conteúdo (ex: "audio/wav")
 } HTTP_REQUEST_STATE;
 
 extern void http_client_response_handler(const char *body);
@@ -45,5 +51,8 @@ err_t http_post_request(const char *host, const char *path, uint16_t port, const
 
 // Incia uma requisição HTTP PATCH.
 err_t http_patch_request(const char *host, const char *path, uint16_t port, const char *data);
+
+// public prototypes (no final do header)
+err_t http_post_binary(const char *host, const char *path, uint16_t port, const uint8_t *data, size_t data_len, const char *content_type);
 
 #endif // HTTP_CLIENT_H

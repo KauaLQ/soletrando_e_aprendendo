@@ -60,7 +60,7 @@ const int tempo_por_nivel[] = {10, 5, 3};
 const int max_nivel = 3;
 
 /* --- buffer de áudio (armazenamento local) --- */
-#define AUDIO_BUF_LEN (8 * 1024) // ~1s a 8kHz (ajuste conforme memória)
+#define AUDIO_BUF_LEN (64 * 1024) // 64KiB -> suficiente para ~8kHz * 7s = 56KiB
 static volatile uint8_t audio_buffer[AUDIO_BUF_LEN];
 static volatile size_t audio_pos = 0;
 
@@ -72,6 +72,97 @@ static volatile bool waiting_for_result = false;
 /* Forward: função que será chamada quando http_client receber corpo de resposta.
    Precisamos que http_client.c invoque essa função (veja snippet abaixo). */
 void http_client_response_handler(const char *body);
+
+/* --- protótipo do novo POST binário (adicionado em http_client.h) --- */
+err_t http_post_binary(const char *host, const char *path, uint16_t port, const uint8_t *data, size_t data_len, const char *content_type);
+
+/* --- monta cabeçalho WAV 8-bit PCM mono 8000Hz (44 bytes) --- */
+static void write_wav_header(uint8_t *hdr, uint32_t data_len) {
+    // header little-endian
+    uint32_t chunk_size = 36 + data_len;
+    uint32_t subchunk2_size = data_len;
+    uint16_t audio_format = 1; // PCM
+    uint16_t num_channels = 1;
+    uint32_t sample_rate = SAMPLE_RATE_HZ;
+    uint16_t bits_per_sample = 8;
+    uint16_t block_align = (num_channels * bits_per_sample) / 8;
+    uint32_t byte_rate = sample_rate * block_align;
+
+    // RIFF
+    memcpy(hdr + 0, "RIFF", 4);
+    hdr[4] = (uint8_t)(chunk_size & 0xff);
+    hdr[5] = (uint8_t)((chunk_size >> 8) & 0xff);
+    hdr[6] = (uint8_t)((chunk_size >> 16) & 0xff);
+    hdr[7] = (uint8_t)((chunk_size >> 24) & 0xff);
+    memcpy(hdr + 8, "WAVE", 4);
+
+    // fmt subchunk
+    memcpy(hdr + 12, "fmt ", 4);
+    uint32_t subchunk1_size = 16;
+    hdr[16] = (uint8_t)(subchunk1_size & 0xff);
+    hdr[17] = (uint8_t)((subchunk1_size >> 8) & 0xff);
+    hdr[18] = (uint8_t)((subchunk1_size >> 16) & 0xff);
+    hdr[19] = (uint8_t)((subchunk1_size >> 24) & 0xff);
+    hdr[20] = (uint8_t)(audio_format & 0xff);
+    hdr[21] = (uint8_t)((audio_format >> 8) & 0xff);
+    hdr[22] = (uint8_t)(num_channels & 0xff);
+    hdr[23] = (uint8_t)((num_channels >> 8) & 0xff);
+    hdr[24] = (uint8_t)(sample_rate & 0xff);
+    hdr[25] = (uint8_t)((sample_rate >> 8) & 0xff);
+    hdr[26] = (uint8_t)((sample_rate >> 16) & 0xff);
+    hdr[27] = (uint8_t)((sample_rate >> 24) & 0xff);
+    hdr[28] = (uint8_t)(byte_rate & 0xff);
+    hdr[29] = (uint8_t)((byte_rate >> 8) & 0xff);
+    hdr[30] = (uint8_t)((byte_rate >> 16) & 0xff);
+    hdr[31] = (uint8_t)((byte_rate >> 24) & 0xff);
+    hdr[32] = (uint8_t)(block_align & 0xff);
+    hdr[33] = (uint8_t)((block_align >> 8) & 0xff);
+    hdr[34] = (uint8_t)(bits_per_sample & 0xff);
+    hdr[35] = (uint8_t)((bits_per_sample >> 8) & 0xff);
+
+    // data subchunk
+    memcpy(hdr + 36, "data", 4);
+    hdr[40] = (uint8_t)(subchunk2_size & 0xff);
+    hdr[41] = (uint8_t)((subchunk2_size >> 8) & 0xff);
+    hdr[42] = (uint8_t)((subchunk2_size >> 16) & 0xff);
+    hdr[43] = (uint8_t)((subchunk2_size >> 24) & 0xff);
+}
+
+/* --- monta WAV em heap e envia via HTTP POST binário --- */
+void build_wav_and_send(int nivel_request) {
+    // calcula tamanhos
+    size_t payload_len = audio_pos; // bytes de 8-bit PCM no buffer
+    if (payload_len == 0) return;
+
+    size_t total_len = 44 + payload_len;
+    uint8_t *packet = malloc(total_len);
+    if (!packet) {
+        // fallback UI
+        memset(buf,0,SSD1306_BUF_LEN);
+        WriteString(buf, 5, 24, "ERRO MEM WAV");
+        render(buf, &frame_area);
+        return;
+    }
+
+    // escreve header + payload
+    write_wav_header(packet, (uint32_t)payload_len);
+    // audio_buffer já contém 8-bit samples (0..255) - copiamos diretamente
+    memcpy(packet + 44, (const void*)audio_buffer, payload_len);
+
+    // monta path com nível
+    char path[128];
+    snprintf(path, sizeof(path), "/upload_audio_raw?nivel=%d", nivel_request);
+
+    // envia (http_post_binary fará sua cópia / gerencia estado)
+    err_t r = http_post_binary(SERVER_HOST, path, SERVER_PORT, packet, total_len, "audio/wav");
+    if (r != ERR_OK) {
+        memset(buf,0,SSD1306_BUF_LEN);
+        WriteString(buf, 5, 24, "ERRO HTTP SEND");
+        render(buf, &frame_area);
+    }
+
+    free(packet);
+}
 
 /* --- ADC callback: agora armazena em buffer em vez de enviar pela serial --- */
 bool audio_sample_callback(repeating_timer_t *t) {
@@ -109,18 +200,15 @@ void process_received_line(char* line, char* buffer) {
         if (nivel <= max_nivel) {
             nivel++;
             if (nivel == 2) {
-                memset(buf, 0, SSD1306_BUF_LEN);
                 WriteString(buf, 5, 40, "proximo nivel=");
                 WriteString(buf, 5, 56, "Nivel 2, 5 segs");
                 render(buf, &frame_area);
             } else if (nivel == 3) {
-                memset(buf, 0, SSD1306_BUF_LEN);
                 WriteString(buf, 5, 40, "proximo nivel=");
                 WriteString(buf, 5, 56, "Nivel 3, 3 segs");
                 render(buf, &frame_area);
             } else {
                 nivel = 1;
-                memset(buf, 0, SSD1306_BUF_LEN);
                 WriteString(buf, 5, 40, "Jogo completo!");
                 WriteString(buf, 5, 56, "Pressione B");
                 render(buf, &frame_area);
@@ -339,9 +427,11 @@ int main() {
             render(buf, &frame_area);
 
             // notifica servidor (opcional)
-            notify_audio_ready_http(nivel);
+            // notify_audio_ready_http(nivel);
 
-            // inicia polling por resultado
+            // after capturando = false; analisando = true;
+            build_wav_and_send(nivel);
+            // mantemos também o polling (servidor pode demorar para processar); opcional
             start_polling_result_http(nivel);
 
             // agora esperamos que waiting_for_result e http_client_response_handler
