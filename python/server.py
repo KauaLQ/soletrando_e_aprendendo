@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, abort, Response, render_template_string
 
+from client import INDEX_HTML  # UI HTML/CSS (ver client.py)
+
 # ASR / audio libs (copiado/adaptado do seu listen_serial.py)
 import unicodedata, re
 from pydub import AudioSegment, effects, silence
@@ -251,36 +253,8 @@ def upload_audio_raw():
 
     return jsonify({"ok": True, "result": to_send})
 
-# simples UI para testes manuais
-INDEX_HTML = """
-<!doctype html>
-<title>Test API Pico</title>
-<h2>Sessões</h2>
-<ul>
-{% for n,s in sessions.items() %}
-  <li>Nivel {{n}} — palavra (raw): {{s.raw_word}} — expected: {{s.expected}} — result: {{s.result}}</li>
-{% endfor %}
-</ul>
-<h3>Pedir palavra</h3>
-<form action="/pedir_palavra" method="get">
-  Nivel: <input name="nivel" value="1" />
-  <button type="submit">Pedir</button>
-</form>
-<h3>Notificar áudio pronto</h3>
-<form action="/notify_audio" method="post">
-  Nivel: <input name="nivel" value="1" />
-  <button type="submit">Notificar</button>
-</form>
-<h3>Upload de áudio (POST /upload_audio?nivel=)</h3>
-<form action="/upload_audio?nivel=1" method="post" enctype="multipart/form-data">
-  <input type="file" name="file" accept=".wav"/>
-  <button type="submit">Enviar</button>
-</form>
-"""
-
 @app.route("/", methods=["GET"])
 def index():
-    # passa sessions simplificadas
     simplified = {k: {'raw_word': v['raw_word'], 'expected': v['expected'], 'result': v.get('result')} for k,v in sessions.items()}
     return render_template_string(INDEX_HTML, sessions=simplified)
 
