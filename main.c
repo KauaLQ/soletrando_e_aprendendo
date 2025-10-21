@@ -17,6 +17,7 @@
 #include "hardware/gpio.h"
 #include "hardware/timer.h"
 #include "pico/binary_info.h"
+#include "pico/time.h"
 #include "hardware/i2c.h"
 
 #include "display/ssd1306_i2c.h"
@@ -34,7 +35,7 @@
 #define SAMPLE_RATE_HZ 8000
 #define MAX_LINE_LEN 128
 
-#define SERVER_HOST "192.168.1.103"
+#define SERVER_HOST "192.168.1.104"
 #define SERVER_PORT 8000
 
 /* --- display area (mantive sua estrutura) --- */
@@ -46,6 +47,10 @@ struct render_area frame_area = {
 };
 
 uint8_t buf[SSD1306_BUF_LEN];
+
+static volatile bool polling_active = false;
+static volatile bool polling_request_inflight = false;
+static uint32_t next_poll_time_ms = 0;
 
 /* --- jogo / estados --- */
 volatile bool capturando = false;
@@ -129,10 +134,11 @@ static void write_wav_header(uint8_t *hdr, uint32_t data_len) {
 }
 
 /* --- monta WAV em heap e envia via HTTP POST binário --- */
-void build_wav_and_send(int nivel_request) {
+// retorna ERR_OK em sucesso (ownership transferida), outro err_t em erro
+err_t build_wav_and_send(int nivel_request) {
     // calcula tamanhos
     size_t payload_len = audio_pos; // bytes de 8-bit PCM no buffer
-    if (payload_len == 0) return;
+    if (payload_len == 0) return ERR_VAL;
 
     size_t total_len = 44 + payload_len;
     uint8_t *packet = malloc(total_len);
@@ -141,7 +147,7 @@ void build_wav_and_send(int nivel_request) {
         memset(buf,0,SSD1306_BUF_LEN);
         WriteString(buf, 5, 24, "ERRO MEM WAV");
         render(buf, &frame_area);
-        return;
+        return ERR_MEM;
     }
 
     // escreve header + payload
@@ -153,15 +159,16 @@ void build_wav_and_send(int nivel_request) {
     char path[128];
     snprintf(path, sizeof(path), "/upload_audio_raw?nivel=%d", nivel_request);
 
-    // envia (http_post_binary fará sua cópia / gerencia estado)
-    err_t r = http_post_binary(SERVER_HOST, path, SERVER_PORT, packet, total_len, "audio/wav");
+    // envia (http_post_binary_take_ownership fará a cópia/posse)
+    err_t r = http_post_binary_take_ownership(SERVER_HOST, path, SERVER_PORT, packet, total_len, "audio/wav");
     if (r != ERR_OK) {
+        // falhou: libera packet (http_client não recebeu ownership)
+        free(packet);
         memset(buf,0,SSD1306_BUF_LEN);
         WriteString(buf, 5, 24, "ERRO HTTP SEND");
         render(buf, &frame_area);
     }
-
-    free(packet);
+    return r;
 }
 
 /* --- ADC callback: agora armazena em buffer em vez de enviar pela serial --- */
@@ -252,15 +259,26 @@ void http_client_response_handler(const char *body) {
         session_active = true;
         word_shown = false;
     } else if (waiting_for_result) {
-        // chamada quando temos transcrição final
+        // Se servidor respondeu "processing", ainda não é a transcrição final
+        if (strstr(body, "processing") != NULL) {
+            polling_request_inflight = false;
+            uint32_t now = to_ms_since_boot(get_absolute_time());
+            next_poll_time_ms = now + 1000;
+            return;
+        }
+
+        // caso contrário: recebemos a transcrição final
         char transcription[MAX_LINE_LEN];
         strncpy(transcription, body, sizeof(transcription)-1);
         transcription[sizeof(transcription)-1] = '\0';
 
         // processa com a palavra esperada
         process_received_line(transcription, (char*)current_expected_word);
+
+        // encerra o polling
         waiting_for_result = false;
-        // process_received_line encerrará a sessão e limpará a palavra
+        polling_active = false;
+        polling_request_inflight = false;
     }
 }
 
@@ -285,6 +303,10 @@ void notify_audio_ready_http(int nivel_request) {
 /* --- Polling para resultado --- */
 void start_polling_result_http(int nivel_request) {
     waiting_for_result = true;
+    polling_active = true;
+    // imediatamente faremos um primeiro GET
+    polling_request_inflight = true;
+    next_poll_time_ms = to_ms_since_boot(get_absolute_time());
     char path[128];
     snprintf(path, sizeof(path), "/resultado?nivel=%d", nivel_request);
     http_get_request(SERVER_HOST, path, SERVER_PORT);
@@ -429,10 +451,14 @@ int main() {
             // notifica servidor (opcional)
             // notify_audio_ready_http(nivel);
 
-            // after capturando = false; analisando = true;
-            build_wav_and_send(nivel);
-            // mantemos também o polling (servidor pode demorar para processar); opcional
-            start_polling_result_http(nivel);
+            err_t send_r = build_wav_and_send(nivel);
+            if (send_r == ERR_OK) {
+                // inicia polling apenas se o POST foi aceito
+                start_polling_result_http(nivel);
+            } else {
+                // falha no envio: informa usuário e cancela análise
+                analisando = false;
+            }
 
             // agora esperamos que waiting_for_result e http_client_response_handler
             // chamem process_received_line quando receberem a transcrição.
@@ -443,11 +469,21 @@ int main() {
         if (gpio_get(BUTTON_PIN_B)) {
             esperando = true;
         }
-
-        // OBS: Removi a limpeza automática de current_expected_word aqui
-        // para evitar que a palavra seja apagada em momentos errados.
         // A palavra será limpa quando o usuário pedir nova palavra (apertar B)
         // ou ao finalizar process_received_line().
+
+        // checar polling: se ativo, não há request em flight e já passou o tempo -> enviar novo GET
+        uint32_t now = to_ms_since_boot(get_absolute_time());
+        if (polling_active && !polling_request_inflight && (int32_t)(now - next_poll_time_ms) >= 0) {
+            // envia novo GET
+            char path[128];
+            snprintf(path, sizeof(path), "/resultado?nivel=%d", nivel);
+            polling_request_inflight = true;
+            http_get_request(SERVER_HOST, path, SERVER_PORT);
+            // por segurança atualizamos next_poll_time para evitar envio imediato repetido;
+            // será reajustado no handler caso receba "processing".
+            next_poll_time_ms = now + 5000; // fallback (5s) caso handler não ajuste — proteção
+        }
 
         sleep_ms(50);
     }

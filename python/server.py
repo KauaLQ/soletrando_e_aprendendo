@@ -9,6 +9,7 @@ import time
 import json
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, abort, Response, render_template_string
+import threading
 
 from client import INDEX_HTML  # UI HTML/CSS (ver client.py)
 
@@ -120,6 +121,29 @@ def transcrever_fala(caminho_arquivo: str) -> str:
     except sr.RequestError as e:
         app.logger.exception("[ASR] RequestError")
         return "erro"
+    
+def _background_process_and_set_result(path, nivel):
+    try:
+        recognized_norm = transcrever_fala(path)
+        app.logger.info(f"Transcrito (raw, bg): {recognized_norm}")
+
+        if nivel in sessions and sessions[nivel].get('expected'):
+            expected = sessions[nivel]['expected']
+            if recognized_norm in ("incompreensivel", "erro", ""):
+                to_send = recognized_norm
+            else:
+                lev = levenshtein(recognized_norm, expected)
+                if recognized_norm == expected or lev <= 1:
+                    to_send = expected
+                else:
+                    to_send = recognized_norm
+            sessions[nivel]['result'] = to_send
+            sessions[nivel]['updated_at'] = time.time()
+        else:
+            sessions[nivel]['result'] = recognized_norm
+            sessions[nivel]['updated_at'] = time.time()
+    except Exception:
+        app.logger.exception("Erro em background_process")
 
 # ---------- Endpoints API ----------
 
@@ -210,8 +234,10 @@ def resultado():
     except:
         nivel = 1
     s = sessions.get(nivel)
+    # se não há sessão ou ainda não tem result, devolve um corpo simples "processing"
     if not s or s.get('result') is None:
-        return ('', 204)
+        return Response("processing", status=200, mimetype="text/plain")
+    # quando há resultado, devolve ele
     return Response(s['result'], status=200, mimetype="text/plain")
 
 @app.route("/upload_audio_raw", methods=["POST"])
@@ -225,33 +251,19 @@ def upload_audio_raw():
     if not data:
         return jsonify({"ok": False, "error": "no data"}), 400
 
-    # salva como WAV
     filename = f"voz_n{nivel}_{int(time.time())}_raw.wav"
     path = UPLOAD_DIR / filename
     with open(path, "wb") as f:
         f.write(data)
     app.logger.info(f"Arquivo raw salvo: {path}")
 
-    # processa e transcreve como antes
-    recognized_norm = transcrever_fala(str(path))
-    app.logger.info(f"Transcrito (raw): {recognized_norm}")
+    # dispara processamento em background
+    t = threading.Thread(target=_background_process_and_set_result, args=(str(path), nivel))
+    t.daemon = True
+    t.start()
 
-    if nivel in sessions and sessions[nivel].get('expected'):
-        expected = sessions[nivel]['expected']
-        if recognized_norm in ("incompreensivel", "erro", ""):
-            to_send = recognized_norm
-        else:
-            lev = levenshtein(recognized_norm, expected)
-            if recognized_norm == expected or lev <= 1:
-                to_send = expected
-            else:
-                to_send = recognized_norm
-        sessions[nivel]['result'] = to_send
-        sessions[nivel]['updated_at'] = time.time()
-    else:
-        to_send = recognized_norm
-
-    return jsonify({"ok": True, "result": to_send})
+    # responde imediatamente SEM CORPO; o cliente deve fazer polling em /resultado
+    return '', 202
 
 @app.route("/", methods=["GET"])
 def index():

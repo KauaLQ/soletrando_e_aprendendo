@@ -78,7 +78,7 @@ static err_t try_send_body(struct tcp_pcb *tpcb, HTTP_REQUEST_STATE *state) {
         size_t remaining = state->body_len - state->body_sent;
         size_t to_send = remaining;
         if (to_send > avail) to_send = avail;
-        if (to_send > 1460) to_send = 1460; // enviar em MSS-ish chunks
+        if (to_send > 1024) to_send = 1024; // envia em chunks de até 1KiB
 
         cyw43_arch_lwip_begin();
         err_t err = tcp_write(tpcb, state->body + state->body_sent, (u16_t)to_send, TCP_WRITE_FLAG_COPY);
@@ -309,6 +309,11 @@ static void http_dns_found_cb(const char *name, const ip_addr_t *ipaddr, void *c
 
         cyw43_arch_lwip_begin();
         state->pcb = tcp_new();
+        if (!state->pcb) {
+            printf("tcp_new() returned NULL - no TCP PCB available\n");
+            http_client_close(state);
+            return;
+        }
         tcp_arg(state->pcb, state);
         tcp_recv(state->pcb, http_client_recv_cb);
         tcp_err(state->pcb, http_client_err_cb);
@@ -422,6 +427,47 @@ static err_t start_http_request_binary(const char *host, const char *path, uint1
     }
 
     return ERR_OK;
+}
+
+err_t start_http_request_binary_take_ownership(const char *host, const char *path, uint16_t port, uint8_t *body, size_t body_len, const char *method, const char *content_type) {
+    HTTP_REQUEST_STATE *state = calloc(1, sizeof(HTTP_REQUEST_STATE));
+    if (!state) return ERR_MEM;
+
+    const char *request_template = "%s %s HTTP/1.1\r\nHost: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n";
+    int header_len = snprintf(NULL, 0, request_template, method, path, host, content_type ? content_type : "application/octet-stream", (int)body_len);
+    state->request = malloc(header_len + 1);
+    if (!state->request) {
+        free(state);
+        return ERR_MEM;
+    }
+    sprintf(state->request, request_template, method, path, host, content_type ? content_type : "application/octet-stream", (int)body_len);
+
+    state->host = strdup(host);
+    state->port = port;
+
+    // aqui em vez de copiar, assumimos ownership do 'body' passado
+    state->body = body;
+    state->body_len = body_len;
+    state->body_sent = 0;
+
+    if (content_type) state->content_type = strdup(content_type);
+
+    // DNS / connect
+    cyw43_arch_lwip_begin();
+    err_t err = dns_gethostbyname(host, &state->remote_addr, http_dns_found_cb, state);
+    cyw43_arch_lwip_end();
+
+    if (err == ERR_OK) {
+        http_dns_found_cb(host, &state->remote_addr, state);
+    } else if (err != ERR_INPROGRESS) {
+        http_client_close(state);
+        return err;
+    }
+    return ERR_OK;
+}
+
+err_t http_post_binary_take_ownership(const char *host, const char *path, uint16_t port, uint8_t *data, size_t data_len, const char *content_type) {
+    return start_http_request_binary_take_ownership(host, path, port, data, data_len, "POST", content_type);
 }
 
 // wrapper público

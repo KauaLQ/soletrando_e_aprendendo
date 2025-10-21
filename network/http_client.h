@@ -55,4 +55,8 @@ err_t http_patch_request(const char *host, const char *path, uint16_t port, cons
 // public prototypes (no final do header)
 err_t http_post_binary(const char *host, const char *path, uint16_t port, const uint8_t *data, size_t data_len, const char *content_type);
 
+// envia corpo binário tomando posse do ponteiro 'data'.
+// http_client será responsável por liberar esse buffer quando encerrar a requisição.
+err_t http_post_binary_take_ownership(const char *host, const char *path, uint16_t port, uint8_t *data, size_t data_len, const char *content_type);
+
 #endif // HTTP_CLIENT_H

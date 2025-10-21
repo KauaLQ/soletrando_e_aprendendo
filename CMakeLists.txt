@@ -57,6 +57,7 @@ pico_enable_stdio_usb(soletrando_e_aprendendo 1)
 # Add the standard library to the build
 target_link_libraries(soletrando_e_aprendendo
         pico_stdlib
+        pico_time
         hardware_adc
         hardware_timer
         hardware_gpio
