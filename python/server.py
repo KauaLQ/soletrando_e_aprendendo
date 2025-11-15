@@ -122,7 +122,7 @@ def transcrever_fala(caminho_arquivo: str) -> str:
         app.logger.exception("[ASR] RequestError")
         return "erro"
     
-def _background_process_and_set_result(path, nivel):
+def _background_process_and_set_result(path, nivel, path_proc):
     try:
         recognized_norm = transcrever_fala(path)
         app.logger.info(f"Transcrito (raw, bg): {recognized_norm}")
@@ -142,6 +142,11 @@ def _background_process_and_set_result(path, nivel):
         else:
             sessions[nivel]['result'] = recognized_norm
             sessions[nivel]['updated_at'] = time.time()
+        try:
+            os.remove(path)
+            os.remove(path_proc)
+        except:
+            pass
     except Exception:
         app.logger.exception("Erro em background_process")
 
@@ -201,12 +206,19 @@ def upload_audio():
 
     filename = f"voz_n{nivel}_{int(time.time())}.wav"
     path = UPLOAD_DIR / filename
+    filename_proc = f"voz_n{nivel}_{int(time.time())}_raw_proc.wav"
+    path_proc = UPLOAD_DIR / filename_proc
     file.save(path)
     app.logger.info(f"Arquivo salvo: {path}")
 
     # processa e transcreve
     recognized_norm = transcrever_fala(str(path))
     app.logger.info(f"Transcrito: {recognized_norm}")
+    try:
+        os.remove(path)
+        os.remove(path_proc)
+    except:
+        pass
 
     # decide resposta
     if nivel in sessions and sessions[nivel].get('expected'):
@@ -253,12 +265,14 @@ def upload_audio_raw():
 
     filename = f"voz_n{nivel}_{int(time.time())}_raw.wav"
     path = UPLOAD_DIR / filename
+    filename_proc = f"voz_n{nivel}_{int(time.time())}_raw_proc.wav"
+    path_proc = UPLOAD_DIR / filename_proc
     with open(path, "wb") as f:
         f.write(data)
     app.logger.info(f"Arquivo raw salvo: {path}")
 
     # dispara processamento em background
-    t = threading.Thread(target=_background_process_and_set_result, args=(str(path), nivel))
+    t = threading.Thread(target=_background_process_and_set_result, args=(str(path), nivel, str(path_proc)))
     t.daemon = True
     t.start()
 
