@@ -88,6 +88,31 @@ INDEX_HTML = r"""
     ul.sessions li{padding:8px 0;border-bottom:1px dashed #eee}
     .meta{font-size:13px;color:#666}
   </style>
+
+  <script>
+  const evtSource = new EventSource("/stream");
+
+  evtSource.onmessage = function(event) {
+      const data = JSON.parse(event.data);
+
+      const ul = document.querySelector("ul.sessions");
+      ul.innerHTML = "";
+
+      if (Object.keys(data).length === 0) {
+          ul.innerHTML = "<li>Nenhuma sessão ativa</li>";
+          return;
+      }
+
+      for (const nivel in data) {
+          const s = data[nivel];
+          const li = document.createElement("li");
+          li.innerHTML =
+              `<strong>Nivel ${nivel}</strong> — 
+              <span class="meta">palavra: ${s.raw_word || '—'} — resultado: ${s.result || '—'}</span>`;
+          ul.appendChild(li);
+      }
+  };
+  </script>
 </head>
 <body>
   <header>

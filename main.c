@@ -35,7 +35,7 @@
 #define SAMPLE_RATE_HZ 8000
 #define MAX_LINE_LEN 128
 
-#define SERVER_HOST "192.168.1.104"
+#define SERVER_HOST "192.168.1.108"
 #define SERVER_PORT 8000
 
 /* --- display area (mantive sua estrutura) --- */

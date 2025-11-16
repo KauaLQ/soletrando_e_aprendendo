@@ -279,6 +279,28 @@ def upload_audio_raw():
     # responde imediatamente SEM CORPO; o cliente deve fazer polling em /resultado
     return '', 202
 
+@app.route("/stream")
+def stream():
+    def event_stream():
+        last_snapshot = None
+        while True:
+            # Captura um snapshot simples das sessões
+            snapshot = {
+                k: {
+                    "raw_word": v.get("raw_word"),
+                    "expected": v.get("expected"),
+                    "result": v.get("result")
+                } for k, v in sessions.items()
+            }
+
+            if snapshot != last_snapshot:
+                # envia update apenas quando mudar
+                yield f"data: {json.dumps(snapshot)}\n\n"
+                last_snapshot = snapshot
+
+            time.sleep(0.5)  # não pesar CPU
+    return Response(event_stream(), mimetype="text/event-stream")
+
 @app.route("/", methods=["GET"])
 def index():
     simplified = {k: {'raw_word': v['raw_word'], 'expected': v['expected'], 'result': v.get('result')} for k,v in sessions.items()}
@@ -286,4 +308,5 @@ def index():
 
 if __name__ == "__main__":
     # Rodar em 0.0.0.0:8000 para ser acessível pela Pico na sua rede
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    # rode com run apenas em ambiente de teste/desenvolvimento
+    app.run(host="0.0.0.0", port=8000, debug=False)
