@@ -19,6 +19,7 @@
 #include "pico/binary_info.h"
 #include "pico/time.h"
 #include "hardware/i2c.h"
+#include "hardware/watchdog.h"
 
 #include "display/ssd1306_i2c.h"
 #include "matriz_led/neopixel_pio.h"
@@ -30,12 +31,12 @@
 /* --- configurações --- */
 #define BUTTON_PIN_A 5
 #define BUTTON_PIN_B 6
-#define BUZZER_PIN_A 21
+#define BUZZER_PIN_A 21 // buzzer conectado ao GPIO21
 #define ADC_PIN 28
 #define SAMPLE_RATE_HZ 8000
 #define MAX_LINE_LEN 128
 
-#define SERVER_HOST "192.168.1.108"
+#define SERVER_HOST "177.220.85.113"
 #define SERVER_PORT 8000
 
 /* --- display area (mantive sua estrutura) --- */
@@ -51,6 +52,8 @@ uint8_t buf[SSD1306_BUF_LEN];
 static volatile bool polling_active = false;
 static volatile bool polling_request_inflight = false;
 static uint32_t next_poll_time_ms = 0;
+static uint32_t polling_start_time_ms = 0;
+#define POLLING_TIMEOUT_MS 15000   // 15 segundos
 
 /* --- jogo / estados --- */
 volatile bool capturando = false;
@@ -304,12 +307,39 @@ void notify_audio_ready_http(int nivel_request) {
 void start_polling_result_http(int nivel_request) {
     waiting_for_result = true;
     polling_active = true;
-    // imediatamente faremos um primeiro GET
     polling_request_inflight = true;
-    next_poll_time_ms = to_ms_since_boot(get_absolute_time());
+
+    // marca o tempo em que o polling começou
+    polling_start_time_ms = to_ms_since_boot(get_absolute_time());
+
+    next_poll_time_ms = polling_start_time_ms;
+
     char path[128];
     snprintf(path, sizeof(path), "/resultado?nivel=%d", nivel_request);
     http_get_request(SERVER_HOST, path, SERVER_PORT);
+}
+
+/* --- fallback: polling excedeu timeout --- */
+void fallback_connection_lost() {
+    // limpa tela
+    memset(buf, 0, SSD1306_BUF_LEN);
+    WriteString(buf, 5, 16, "CONEXAO PERDIDA");
+    WriteString(buf, 5, 40, "Reiniciando...");
+    render(buf, &frame_area);
+
+    npWriteWarning();
+
+    // beep curto
+    beep(BUZZER_PIN_A, 150, 500);
+
+    // aguarda pequeno tempo para o usuário ver
+    sleep_ms(1500);
+
+    // inicializa watchdog com timeout pequeno e reseta a placa
+    watchdog_enable(1, 1);  // timeout=1ms, reset=enable
+    while (1) {
+        // espera o reset
+    }
 }
 
 /* --- Função principal --- */
@@ -483,6 +513,15 @@ int main() {
             // por segurança atualizamos next_poll_time para evitar envio imediato repetido;
             // será reajustado no handler caso receba "processing".
             next_poll_time_ms = now + 5000; // fallback (5s) caso handler não ajuste — proteção
+        }
+
+        // timeout do polling (fallback)
+        if (polling_active) {
+            uint32_t now = to_ms_since_boot(get_absolute_time());
+            if ((now - polling_start_time_ms) > POLLING_TIMEOUT_MS) {
+                // timeout estourou, aciona fallback
+                fallback_connection_lost();
+            }
         }
 
         sleep_ms(50);

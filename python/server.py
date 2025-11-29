@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # server.py - API HTTP para testar o main.c (Pico)
 # Porta: 8000 (bind 0.0.0.0)
 # Dependências: flask, werkzeug, speechrecognition, pydub
@@ -135,7 +134,7 @@ def _background_process_and_set_result(path, nivel, path_proc):
                 lev = levenshtein(recognized_norm, expected)
                 if recognized_norm == expected or lev <= 1:
                     to_send = expected
-                else:
+                else: 
                     to_send = recognized_norm
             sessions[nivel]['result'] = to_send
             sessions[nivel]['updated_at'] = time.time()

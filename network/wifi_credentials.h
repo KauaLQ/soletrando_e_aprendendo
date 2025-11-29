@@ -1,7 +1,10 @@
 #ifndef WIFI_CREDENTIALS_H
 #define WIFI_CREDENTIALS_H
 
-#define WIFI_SSID "CLEUDO"
-#define WIFI_PASSWORD "91898487"
+#define WIFI_SSID "S351-IoT-Access"
+#define WIFI_PASSWORD "20251126"
+
+// #define WIFI_SSID "LIT_ACADEMICO_2.4GHz"
+// #define WIFI_PASSWORD "obr@@ifce2323"
 
 #endif // WIFI_CREDENTIALS_H

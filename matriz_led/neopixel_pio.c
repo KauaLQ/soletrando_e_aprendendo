@@ -200,3 +200,14 @@ void npWriteV(){
 
   npWrite();
 }
+
+void npWriteWarning(){
+  npClear();
+
+  npSetLED(22, 80, 80, 0);
+  npSetLED(17, 80, 80, 0);
+  npSetLED(12, 80, 80, 0);
+  npSetLED(2, 80, 80, 0);
+
+  npWrite();
+}

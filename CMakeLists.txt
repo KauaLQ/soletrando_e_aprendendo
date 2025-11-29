@@ -66,6 +66,7 @@ target_link_libraries(soletrando_e_aprendendo
         hardware_pwm
         hardware_pio
         hardware_clocks
+        hardware_watchdog
         pico_stdio_usb)
 
 # Add the standard include files to the build
