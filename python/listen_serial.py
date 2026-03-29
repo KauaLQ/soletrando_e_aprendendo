@@ -1,5 +1,4 @@
 # python3 listen_serial.py COM7
-
 import serial
 import random
 import time
@@ -13,7 +12,7 @@ import speech_recognition as sr
 from pydub import AudioSegment, effects, silence
 
 # Configurações
-porta_serial = sys.argv[1] if len(sys.argv) > 1 else 'COM7'
+porta_serial = sys.argv[1] if len(sys.argv) > 1 else 'COM3'
 baudrate = 115200
 SAMPLE_RATE = 8000
 SAMPLE_WIDTH = 2

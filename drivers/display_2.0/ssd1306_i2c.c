@@ -1,70 +1,12 @@
-/**
- * Copyright (c) 2021 Raspberry Pi (Trading) Ltd.
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
+#include "ssd1306_i2c.h"
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include "pico/stdlib.h"
-#include "pico/binary_info.h"
-#include "hardware/i2c.h"
-#include "ssd1306_font.h"
+static uint8_t ssd1306_buf[SSD1306_BUF_LEN];
 
-#define SSD1306_HEIGHT              64
-#define SSD1306_WIDTH               128
-
-#define SSD1306_I2C_ADDR            _u(0x3C)
-
-#define SSD1306_I2C_CLK             400
-//#define SSD1306_I2C_CLK             1000
-
-
-// comandos (veja o datasheet)
-#define SSD1306_SET_MEM_MODE        _u(0x20)
-#define SSD1306_SET_COL_ADDR        _u(0x21)
-#define SSD1306_SET_PAGE_ADDR       _u(0x22)
-#define SSD1306_SET_HORIZ_SCROLL    _u(0x26)
-#define SSD1306_SET_SCROLL          _u(0x2E)
-
-#define SSD1306_SET_DISP_START_LINE _u(0x40)
-
-#define SSD1306_SET_CONTRAST        _u(0x81)
-#define SSD1306_SET_CHARGE_PUMP     _u(0x8D)
-
-#define SSD1306_SET_SEG_REMAP       _u(0xA0)
-#define SSD1306_SET_ENTIRE_ON       _u(0xA4)
-#define SSD1306_SET_ALL_ON          _u(0xA5)
-#define SSD1306_SET_NORM_DISP       _u(0xA6)
-#define SSD1306_SET_INV_DISP        _u(0xA7)
-#define SSD1306_SET_MUX_RATIO       _u(0xA8)
-#define SSD1306_SET_DISP            _u(0xAE)
-#define SSD1306_SET_COM_OUT_DIR     _u(0xC0)
-#define SSD1306_SET_COM_OUT_DIR_FLIP _u(0xC0)
-
-#define SSD1306_SET_DISP_OFFSET     _u(0xD3)
-#define SSD1306_SET_DISP_CLK_DIV    _u(0xD5)
-#define SSD1306_SET_PRECHARGE       _u(0xD9)
-#define SSD1306_SET_COM_PIN_CFG     _u(0xDA)
-#define SSD1306_SET_VCOM_DESEL      _u(0xDB)
-
-#define SSD1306_PAGE_HEIGHT         _u(8)
-#define SSD1306_NUM_PAGES           (SSD1306_HEIGHT / SSD1306_PAGE_HEIGHT)
-#define SSD1306_BUF_LEN             (SSD1306_NUM_PAGES * SSD1306_WIDTH)
-
-#define SSD1306_WRITE_MODE         _u(0xFE)
-#define SSD1306_READ_MODE          _u(0xFF)
-
-
-struct render_area {
-    uint8_t start_col;
-    uint8_t end_col;
-    uint8_t start_page;
-    uint8_t end_page;
-
-    int buflen;
+static struct render_area ssd1306_full_area = {
+    .start_col = 0,
+    .end_col = SSD1306_WIDTH - 1,
+    .start_page = 0,
+    .end_page = SSD1306_NUM_PAGES - 1,
 };
 
 void calc_render_area_buflen(struct render_area *area) {
@@ -152,6 +94,10 @@ void SSD1306_init() {
     };
 
     SSD1306_send_cmd_list(cmds, count_of(cmds));
+
+    calc_render_area_buflen(&ssd1306_full_area);
+    memset(ssd1306_buf, 0, SSD1306_BUF_LEN);
+    render(ssd1306_buf, &ssd1306_full_area);
 }
 
 void SSD1306_scroll(bool on) {
@@ -238,25 +184,22 @@ static void DrawLine(uint8_t *buf, int x0, int y0, int x1, int y1, bool on) {
 }
 
 static inline int GetFontIndex(uint8_t ch) {
-    if (ch >= 'A' && ch <='Z') {
-        return  ch - 'A' + 1;
+    if (ch >= 'A' && ch <= 'Z') {
+        return ch - 'A' + 1;
     }
-    else if (ch >= '0' && ch <='9') {
-        return  ch - '0' + 27;
+    else if (ch >= '0' && ch <= '9') {
+        return ch - '0' + 27;
     }
-    else if (ch == '=') {
-        return 37; // '=' no índice 37
-    } 
-    else if (ch == ',') {
-        return 38; // ',' no índice 38
-    } 
-    else if (ch == '%') {
-        return 39; // '%' no índice 39
-    }
-    else if (ch == '.') {
-        return 40; // '.' no índice 40
-    } 
-    else return  0; // Não tenho aquele caractere, então espaço.
+    else if (ch == '=') return 37;
+    else if (ch == ',') return 38;
+    else if (ch == '%') return 39;
+    else if (ch == '.') return 40;
+    else if (ch == '-') return 41;
+    else if (ch == '!') return 42;
+    else if (ch == 0xB0) return 43;  // (°)
+    else if (ch == ':') return 44;
+    else if (ch == '_') return 45;
+    else return 0; // espaço
 }
 
 static void WriteChar(uint8_t *buf, int16_t x, int16_t y, uint8_t ch) {
@@ -286,6 +229,42 @@ void WriteString(uint8_t *buf, int16_t x, int16_t y, char *str) {
     }
 }
 
+void SSD1306_draw_image_full(const uint8_t *img) {
+    memcpy(ssd1306_buf, img, SSD1306_BUF_LEN);
+}
 
+void SSD1306_draw_image(int x0, int y0, int w, int h, const uint8_t *img) {
+    int pages = h / 8;
+
+    for (int page = 0; page < pages; page++) {
+        for (int x = 0; x < w; x++) {
+            uint8_t byte = img[page * w + x];
+
+            for (int bit = 0; bit < 8; bit++) {
+                if (byte & (1 << bit)) {
+                    SetPixel(
+                        ssd1306_buf,
+                        x0 + x,
+                        y0 + page * 8 + bit,
+                        true
+                    );
+                }
+            }
+        }
+    }
+}
+
+// --------------- funções de alto nível ---------------
+void SSD1306_clear(void) {
+    memset(ssd1306_buf, 0, SSD1306_BUF_LEN);
+}
+
+void SSD1306_draw_string(int x, int y, char *str) {
+    WriteString(ssd1306_buf, x, y, str);
+}
+
+void SSD1306_update(void) {
+    render(ssd1306_buf, &ssd1306_full_area);
+}
 
 #endif

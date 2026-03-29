@@ -7,20 +7,9 @@
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
 #include "hardware/uart.h"
-#include "display/ssd1306_i2c.h"
-#include "matriz_led/neopixel_pio.h"
-#include "buzzer/buzzer_pwm.h"
-
-// Área de renderização do display
-struct render_area frame_area = {
-    start_col: 0,
-    end_col : SSD1306_WIDTH - 1,
-    start_page : 0,
-    end_page : SSD1306_NUM_PAGES - 1
-    };
-
-// Buffer para o display
-uint8_t buf[SSD1306_BUF_LEN];
+#include "drivers/display_2.0/ssd1306_i2c.h"
+#include "drivers/matriz_led/neopixel_pio.h"
+#include "drivers/buzzer/buzzer_pwm.h"
 
 #define BUTTON_PIN_A 5
 #define BUTTON_PIN_B 6
@@ -40,7 +29,6 @@ const int max_nivel = 3; // limite máximo de níveis
 
 bool audio_sample_callback(repeating_timer_t *t) {
     if (!capturando) return true;
-
     uint16_t raw = adc_read();
     uint8_t sample = raw >> 4; // 12 bits → 8 bits
     putchar_raw(sample);
@@ -50,17 +38,17 @@ bool audio_sample_callback(repeating_timer_t *t) {
 // Função para resetar jogo
 void reset_jogo() {
     nivel = 1;
-    memset(buf, 0, SSD1306_BUF_LEN);
-    WriteString(buf, 20, 24, "GAME OVER");
-    render(buf, &frame_area);
+    SSD1306_clear();
+    SSD1306_draw_string(20, 24, "GAME OVER");
+    SSD1306_update();
 }
 
 void process_received_line(char* line, char* buffer) {
     if (strstr(line, buffer) != NULL) {
-        memset(buf, 0, SSD1306_BUF_LEN);
-        WriteString(buf, 5, 8, "Parabens!");
-        WriteString(buf, 5, 24, "Certa resposta");
-        render(buf, &frame_area);
+        SSD1306_clear();
+        SSD1306_draw_string(5, 8, "Parabens!");
+        SSD1306_draw_string(5, 24, "Certa resposta");
+        SSD1306_update();
         npWriteV();
         beep(BUZZER_PIN_A, 120, 400);
         sleep_ms(200);
@@ -69,28 +57,28 @@ void process_received_line(char* line, char* buffer) {
         if (nivel <= max_nivel) {
             nivel++;
             if (nivel == 2) {
-                WriteString(buf, 5, 40, "prroximo nivel=");
-                WriteString(buf, 5, 56, "Nivel 2, 5 segs");
-                render(buf, &frame_area);
+                SSD1306_draw_string(5, 40, "prroximo nivel=");
+                SSD1306_draw_string(5, 56, "Nivel 2, 5 segs");
+                SSD1306_update();
             } else if (nivel == 3) {
-                WriteString(buf, 5, 40, "prroximo nivel=");
-                WriteString(buf, 5, 56, "Nivel 3, 3 segs");
-                render(buf, &frame_area);
+                SSD1306_draw_string(5, 40, "prroximo nivel=");
+                SSD1306_draw_string(5, 56, "Nivel 3, 3 segs");
+                SSD1306_update();
             } else {
                 nivel = 1;
-                WriteString(buf, 5, 40, "Jogo completo!");
-                WriteString(buf, 5, 56, "Pressione B");
-                render(buf, &frame_area);
+                SSD1306_draw_string(5, 40, "Jogo completo!");
+                SSD1306_draw_string(5, 56, "Pressione B");
+                SSD1306_update();
             }
         }
         analisando = false; // sai do loop e vai pro próximo
     } else {
-        memset(buf, 0, SSD1306_BUF_LEN);
-        WriteString(buf, 5, 8, "a resposta foi=");
-        WriteString(buf, 5, 24, line);
-        WriteString(buf, 5, 40, "a palavra era=");
-        WriteString(buf, 5, 56, buffer);
-        render(buf, &frame_area);
+        SSD1306_clear();
+        SSD1306_draw_string(5, 8, "a resposta foi=");
+        SSD1306_draw_string(5, 24, line);
+        SSD1306_draw_string(5, 40, "a palavra era=");
+        SSD1306_draw_string(5, 56, buffer);
+        SSD1306_update();
         npWriteX();
         beep(BUZZER_PIN_A, 100, 1000);
         sleep_ms(5000);
@@ -120,11 +108,6 @@ int main()
     gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
     SSD1306_init();
 
-    memset(buf, 0, SSD1306_BUF_LEN);
-    calc_render_area_buflen(&frame_area);
-
-    render(buf, &frame_area);
-
     // Botão
     gpio_init(BUTTON_PIN_A);
     gpio_set_dir(BUTTON_PIN_A, GPIO_IN);
@@ -139,16 +122,15 @@ int main()
 
     char buffer[100];
     int idx = 0;
-    bool esperando = true;
-
     char input_line[MAX_LINE_LEN];
     int input_pos = 0;
+    bool esperando = true;
 
-    memset(buf, 0, SSD1306_BUF_LEN);
-    WriteString(buf, 5, 8, "pressione B");
-    WriteString(buf, 5, 24, "para iniciar");
-    WriteString(buf, 5, 40, "o jogo");
-    render(buf, &frame_area);
+    SSD1306_clear();
+    SSD1306_draw_string(5, 8, "pressione B");
+    SSD1306_draw_string(5, 24, "para iniciar");
+    SSD1306_draw_string(5, 40, "o jogo");
+    SSD1306_update();
     npWriteRigth();
 
     while (true) {
@@ -162,57 +144,53 @@ int main()
         if (ch != PICO_ERROR_TIMEOUT) {
             if (ch == '\n' || ch == '\r') {
                 buffer[idx] = '\0';
-                memset(buf, 0, SSD1306_BUF_LEN);
-                WriteString(buf, 0, 32, buffer);
-                render(buf, &frame_area);
+                SSD1306_clear();
+                SSD1306_draw_string(0, 32, buffer);
+                SSD1306_update();
                 idx = 0;
 
                 int tempo = tempo_por_nivel[nivel-1] + 1;
 
-                //desnhando na matriz de led
+                //desenhando na matriz de led
                 for (uint8_t i = tempo; i > 0; i--) {
                     npWriteNumber(i-1);
                     beep(BUZZER_PIN_A, (i-1 > 5 ? 130 : (i-1 > 0 ? 110 : 100)), (i-1 > 0 ? 500 : 1000));
                     sleep_ms(i-1 > 0 ? 500 : 0);
                 }
 
-                memset(buf, 0, SSD1306_BUF_LEN);
-                WriteString(buf, 5, 8, "pressione A");
-                WriteString(buf, 5, 24, "para iniciar");
-                WriteString(buf, 5, 40, "a soletrar");
-                render(buf, &frame_area);
-
+                SSD1306_clear();
+                SSD1306_draw_string(5, 8, "pressione A");
+                SSD1306_draw_string(5, 24, "para iniciar");
+                SSD1306_draw_string(5, 40, "a soletrar");
+                SSD1306_update();
                 npWriteLeft();
 
                 while (gpio_get(BUTTON_PIN_A))
                 {
                     sleep_ms(10);
                 }
-
                 sleep_ms(10);
                 
                 capturando = !capturando;  // inverte estado
-                memset(buf, 0, SSD1306_BUF_LEN);
-                WriteString(buf, 5, 32, "gravando...");
-                render(buf, &frame_area);
+                SSD1306_clear();
+                SSD1306_draw_string(5, 32, "gravando...");
+                SSD1306_update();
                 npWriteFace();
 
                 // Aplica o debounce após a ação inicial do botão
                 sleep_ms(400);
-
                 while (gpio_get(BUTTON_PIN_A))
                 {
                     sleep_ms(10);
                 }
-
                 sleep_ms(10);
 
                 capturando = !capturando;  // inverte estado
                 analisando = !analisando;
-                memset(buf, 0, SSD1306_BUF_LEN);
-                WriteString(buf, 5, 24, "audio gravado");
-                WriteString(buf, 5, 40, "processando...");
-                render(buf, &frame_area);
+                SSD1306_clear();
+                SSD1306_draw_string(5, 24, "audio gravado");
+                SSD1306_draw_string(5, 40, "processando...");
+                SSD1306_update();
 
                 // Aplica o debounce após a ação inicial do botão
                 sleep_ms(400);
@@ -241,7 +219,6 @@ int main()
         if (gpio_get(BUTTON_PIN_B)) {
             esperando = true;
         }
-
         sleep_ms(10);
     }
 }

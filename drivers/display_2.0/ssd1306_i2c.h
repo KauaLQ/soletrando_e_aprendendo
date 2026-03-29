@@ -1,7 +1,15 @@
-#ifndef FUNCTIONS_SSD1306_H
-#define FUNCTIONS_SSD1306_H
+#ifndef SSD1306_I2C_H
+#define SSD1306_I2C_H
 
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include "pico/stdlib.h"
+#include "pico/binary_info.h"
+#include "hardware/i2c.h"
+#include "ssd1306_font.h"
+#include "ssd1306_logos.h"
 
 #define SSD1306_HEIGHT              64
 #define SSD1306_WIDTH               128
@@ -65,5 +73,11 @@ static void DrawLine(uint8_t *buf, int x0, int y0, int x1, int y1, bool on);
 static inline int GetFontIndex(uint8_t ch);
 static void WriteChar(uint8_t *buf, int16_t x, int16_t y, uint8_t ch);
 void WriteString(uint8_t *buf, int16_t x, int16_t y, char *str);
+
+void SSD1306_clear(void);
+void SSD1306_draw_string(int x, int y, char *str);
+void SSD1306_update(void);
+void SSD1306_draw_image_full(const uint8_t *img);
+void SSD1306_draw_image(int x0, int y0, int w, int h, const uint8_t *img);
 
 #endif

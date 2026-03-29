@@ -37,16 +37,16 @@ pico_sdk_init()
 
 add_executable(soletrando_e_aprendendo
         main.c
-        display/ssd1306_i2c
-        matriz_led/neopixel_pio
-        buzzer/buzzer_pwm
+        drivers/display_2.0/ssd1306_i2c
+        drivers/matriz_led/neopixel_pio
+        drivers/buzzer/buzzer_pwm
         )
 
 pico_set_program_name(soletrando_e_aprendendo "soletrando_e_aprendendo")
 pico_set_program_version(soletrando_e_aprendendo "0.1")
 
 # Gera o header a partir do .pio
-pico_generate_pio_header(soletrando_e_aprendendo ${CMAKE_CURRENT_LIST_DIR}/matriz_led/ws2818b.pio)
+pico_generate_pio_header(soletrando_e_aprendendo ${CMAKE_CURRENT_LIST_DIR}/drivers/matriz_led/ws2818b.pio)
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(soletrando_e_aprendendo 0)
