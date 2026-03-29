@@ -56,13 +56,10 @@ pico_enable_stdio_usb(soletrando_e_aprendendo 1)
 target_link_libraries(soletrando_e_aprendendo
         pico_stdlib
         hardware_adc
-        hardware_timer
-        hardware_gpio
+        hardware_dma
         hardware_i2c
-        hardware_uart
         hardware_pwm
         hardware_pio
-        hardware_clocks
         pico_stdio_usb)
 
 # Add the standard include files to the build
